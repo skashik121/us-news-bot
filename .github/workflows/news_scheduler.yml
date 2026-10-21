@@ -1,0 +1,46 @@
+name: 24/7 Automated News Publisher
+
+on:
+  schedule:
+    # প্রতি ৩ ঘণ্টা পর পর স্বয়ংক্রিয়ভাবে চলবে (দিনে মোট ৮ বার)
+    - cron: '0 */3 * * *'
+  # যেকোনো সময় নিজে থেকে রান করার জন্য
+  workflow_dispatch:
+
+jobs:
+  run-news-bot:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run News Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WP_SITE_URL: ${{ secrets.WP_SITE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          python bot.py
+
+      - name: Commit and Push Updated History Logs
+        run: |
+          git config --global user.name "NewsBot Automation"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add processed_articles.json daily_category_quota.json || true
+          git commit -m "Auto-update quota and processed logs [skip ci]" || echo "No changes to commit"
+          git push
