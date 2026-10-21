@@ -3,7 +3,8 @@
   "counts": {
     "Pop Culture": 2,
     "Entertainment": 0,
-    "Sports": 0,
+    "Sports": 1,
     "Tech & Trends": 0
-  }
+  },
+  "daily_target": 3
 }
