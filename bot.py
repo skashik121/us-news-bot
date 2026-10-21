@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import random
 import base64
 import urllib.parse
 from datetime import datetime
@@ -9,27 +10,24 @@ import requests
 import feedparser
 from slugify import slugify
 
-# উইন্ডোজ টার্মিনালে বাংলা ও স্পেশাল ক্যারেক্টার প্রদর্শনের জন্য
-sys.stdout.reconfigure(encoding='utf-8')
+# টার্মিনালে বাংলা ও স্পেশাল ক্যারেক্টার প্রদর্শনের জন্য
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # ==================== কনফিগারেশন ====================
-GEMINI_API_KEY = "AQ.Ab8RN6JSh7vpD-lNikbDO_f3XElrRlxt0hzgzPwTMQI-bK_gRQ"       # আপনার আসল Gemini API Key দিন
+# গিটহাব সিক্রেটস সাপোর্ট (যদি এনভায়রনমেন্টে থাকে তবে সেখান থেকে নেবে, অন্যথায় ডিফল্ট মান ব্যবহার করবে)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6JSh7vpD-lNikbDO_f3XElrRlxt0hzgzPwTMQI-bK_gRQ").strip()
+WP_SITE_URL = os.getenv("WP_SITE_URL", "https://buzz.mamahmud.top").strip()
+WP_USERNAME = os.getenv("WP_USERNAME", "mamahmud").strip()
+WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "CuZ0 FUcf 99R9 koiK IIbv U5VU").strip()
 
-# ওয়ার্ডপ্রেস ক্রেডেনশিয়ালস
-WP_SITE_URL = "https://buzz.mamahmud.top"       # আপনার ওয়েবসাইটের URL (শেষে কোনো / থাকবে না)
-WP_USERNAME = "mamahmud"                # ওয়ার্ডপ্রেস ইউজারনেম
-WP_APP_PASSWORD = "CuZ0 FUcf 99R9 koiK IIbv U5VU"      # Application Password (১৬ অক্ষরের কোড)
-
-POST_STATUS = "publish"                      # সরাসরি লাইভ করার জন্য "publish"
+POST_STATUS = "publish"
 OUTPUT_DIR = "generated_news"
 IMAGE_DIR = os.path.join(OUTPUT_DIR, "images")
 PROCESSED_LOG_FILE = "processed_articles.json"
 DAILY_QUOTA_FILE = "daily_category_quota.json"
 
-# প্রতি ক্যাটাগরিতে প্রতিদিন সর্বোচ্চ পোস্ট সংখ্যা (৪ ক্যাটাগরি x ২ = ৮টি দৈনিক)
-DAILY_POSTS_PER_CATEGORY = 2
-
-# আপনার ৪টি নির্ধারিত ক্যাটাগরি ও তাদের ডেডিকেটেড গুগল লাইভ ফিড
+# ৪টি নির্ধারিত ক্যাটাগরি ও তাদের ডেডিকেটেড গুগল লাইভ ফিড
 CATEGORY_FEEDS = {
     "Pop Culture": "https://news.google.com/rss/search?q=pop+culture+celebrity+when:1d&hl=en-US&gl=US&ceid=US:en",
     "Entertainment": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
@@ -40,13 +38,12 @@ CATEGORY_FEEDS = {
 
 
 def get_wp_auth_header() -> dict:
-    credentials = f"{WP_USERNAME.strip()}:{WP_APP_PASSWORD.strip()}"
+    credentials = f"{WP_USERNAME}:{WP_APP_PASSWORD}"
     token = base64.b64encode(credentials.encode()).decode("utf-8")
     return {"Authorization": f"Basic {token}"}
 
 
 def get_or_create_wp_category(category_name: str) -> int:
-    """ওয়ার্ডপ্রেসে ক্যাটাগরি চেক ও আইডি সংগ্রহ"""
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/categories"
     headers = get_wp_auth_header()
     
@@ -68,7 +65,6 @@ def get_or_create_wp_category(category_name: str) -> int:
 
 
 def get_or_create_wp_tags(tag_names: list) -> list:
-    """ট্যাগগুলো যাচাই করে আইডি সংগ্রহ অথবা নতুন ট্যাগ তৈরি"""
     tag_ids = []
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/tags"
     headers = get_wp_auth_header()
@@ -129,10 +125,10 @@ def upload_image_to_wordpress(image_path: str, alt_text: str = "") -> dict:
                 patch_headers["Content-Type"] = "application/json"
                 requests.post(f"{url}/{media_id}", headers=patch_headers, json={"alt_text": alt_text}, timeout=20)
 
-            print(f"    [✓] মিডিয়া আপলোড সফল: ID {media_id}")
+            print(f"    [✓] মিডিয়া আপলোড সফল: ID {media_id}")
             return {"id": media_id, "url": source_url}
     except Exception as e:
-        print(f"    [!] মিডিয়া আপলোড এরর: {e}")
+        print(f"    [!] মিডিয়া আপলোড এরর: {e}")
 
     return {}
 
@@ -150,11 +146,11 @@ def format_article_body_with_images(markdown_text: str, body_images: list, title
             html_lines.append(f"<h2>{heading_text}</h2>")
             
             if not inserted_first and len(body_images) > 0 and body_images[0].get("url"):
-                img_tag = f'<figure class="wp-block-image size-large"><img src="{body_images[0]["url"]}" alt="{title}" /><figcaption>Trending updates on {title}</figcaption></figure>'
+                img_tag = f'<figure class="wp-block-image size-large"><img src="{body_images[0]["url"]}" alt="{title}" /><figcaption>In-depth look: {title}</figcaption></figure>'
                 html_lines.append(img_tag)
                 inserted_first = True
             elif inserted_first and not inserted_second and len(body_images) > 1 and body_images[1].get("url"):
-                img_tag = f'<figure class="wp-block-image size-large"><img src="{body_images[1]["url"]}" alt="{title}" /><figcaption>Exclusive coverage</figcaption></figure>'
+                img_tag = f'<figure class="wp-block-image size-large"><img src="{body_images[1]["url"]}" alt="{title}" /><figcaption>Developing coverage</figcaption></figure>'
                 html_lines.append(img_tag)
                 inserted_second = True
         elif line_clean:
@@ -168,13 +164,13 @@ def post_to_wordpress(article_data: dict, saved_images: dict, target_category: s
     headline = article_data.get("seo_headline", "")
     slug = article_data.get("slug", "")
 
-    # ১. ফিচার্ড ইমেজ আপলোড
+    # ১. ফিচার্ড ইমেজ
     feat_img_info = {}
     if saved_images.get("featured"):
         print("  [*] ফিচার্ড ইমেজ আপলোড হচ্ছে...")
         feat_img_info = upload_image_to_wordpress(saved_images["featured"], alt_text=headline)
 
-    # ২. ২টি বডি ইমেজ আপলোড
+    # ২. বডি ইমেজ
     body_imgs_info = []
     if saved_images.get("body_image_1"):
         info1 = upload_image_to_wordpress(saved_images["body_image_1"], alt_text=f"{headline} detail")
@@ -184,17 +180,17 @@ def post_to_wordpress(article_data: dict, saved_images: dict, target_category: s
         info2 = upload_image_to_wordpress(saved_images["body_image_2"], alt_text=f"{headline} scene")
         if info2: body_imgs_info.append(info2)
 
-    # ৩. বডি টেক্সট ফরম্যাটিং
+    # ৩. আর্টিকেল ফরম্যাটিং
     raw_body = article_data.get("article_body_markdown", "")
     final_content_html = format_article_body_with_images(raw_body, body_imgs_info, headline)
 
-    # ৪. ক্যাটাগরি ও ট্যাগ প্রসেসিং
+    # ৪. ক্যাটাগরি ও ট্যাগ
     cat_id = get_or_create_wp_category(target_category)
     raw_tags = article_data.get("tags") or article_data.get("focus_keywords", [])
     print(f"  [*] ট্যাগ প্রসেস হচ্ছে ({len(raw_tags[:7])} টি ট্যাগ)...")
     tag_ids = get_or_create_wp_tags(raw_tags[:7])
 
-    # ৫. পোস্ট তৈরি
+    # ৫. পোস্ট পেলোড
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/posts"
     headers = get_wp_auth_header()
     headers["Content-Type"] = "application/json"
@@ -216,30 +212,38 @@ def post_to_wordpress(article_data: dict, saved_images: dict, target_category: s
         res = requests.post(url, headers=headers, json=post_payload, timeout=40)
         if res.status_code in (200, 201):
             published_url = res.json().get("link")
-            print(f"\n[★] অসাধারণ! পোস্ট সফলভাবে [{target_category}]-এ লাইভ হয়েছে:")
+            print(f"\n[★] পোস্ট সফলভাবে লাইভ হয়েছে:")
             print(f"    -> লিংক: {published_url}")
             return True
         else:
             print(f"[!] পোস্ট তৈরিতে সমস্যা ({res.status_code}): {res.text[:120]}")
     except Exception as e:
-        print(f"[!] পোস্ট রিকোয়েস্ট এরর: {e}")
+        print(f"[!] পোস্ট রিকোয়েস্ট এরর: {e}")
 
     return False
 
 
 def get_daily_quota_tracker() -> dict:
     today_str = datetime.now().strftime("%Y-%m-%d")
-    tracker = {"date": today_str, "counts": {cat: 0 for cat in CATEGORY_FEEDS}}
+    # দৈনিক টার্গেট ৩ থেকে ৫ এর মধ্যে রেন্ডমভাবে নির্ধারিত হবে
+    random_target = random.randint(3, 5)
+    default_tracker = {
+        "date": today_str,
+        "daily_target": random_target,
+        "counts": {cat: 0 for cat in CATEGORY_FEEDS}
+    }
     
     if os.path.exists(DAILY_QUOTA_FILE):
         try:
             with open(DAILY_QUOTA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if data.get("date") == today_str:
+                    if "daily_target" not in data:
+                        data["daily_target"] = random_target
                     return data
         except Exception:
             pass
-    return tracker
+    return default_tracker
 
 
 def save_daily_quota_tracker(tracker: dict):
@@ -247,17 +251,30 @@ def save_daily_quota_tracker(tracker: dict):
         json.dump(tracker, f, indent=2)
 
 
-def select_next_category() -> str:
-    """যে ক্যাটাগরির দিনের কোটা (২টি) এখনো পূর্ণ হয়নি সেটি নির্বাচন করা"""
+def select_balanced_category() -> str:
+    """ক্যাটাগরি ভারসাম্য বজায় রেখে পরবর্তী উপযুক্ত ক্যাটাগরি নির্বাচন করা"""
     tracker = get_daily_quota_tracker()
-    for cat in CATEGORY_FEEDS:
-        if tracker["counts"].get(cat, 0) < DAILY_POSTS_PER_CATEGORY:
-            return cat
-    return ""
+    total_posted_today = sum(tracker["counts"].values())
+    target_today = tracker.get("daily_target", 4)
+
+    # দিনের মোট টার্গেট পূর্ণ হলে আর পোস্ট হবে না
+    if total_posted_today >= target_today:
+        return ""
+
+    # যে ক্যাটাগরিগুলোতে এখনো ২টির বেশি পোস্ট হয়নি তাদের মধ্যে সবচেয়ে কম পোস্ট হওয়া ক্যাটাগরি নির্বাচন
+    available_cats = [cat for cat in CATEGORY_FEEDS if tracker["counts"].get(cat, 0) < 2]
+    if not available_cats:
+        return ""
+
+    # সবচেয়ে কম কাউন্ট থাকা ক্যাটাগরিগুলোকে আগে প্রাধান্য দেওয়া
+    min_count = min(tracker["counts"].get(cat, 0) for cat in available_cats)
+    least_posted_cats = [cat for cat in available_cats if tracker["counts"].get(cat, 0) == min_count]
+    
+    return random.choice(least_posted_cats)
 
 
 def get_available_online_models() -> list:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY.strip()}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
     try:
         res = requests.get(url, timeout=20)
         if res.status_code == 200:
@@ -267,23 +284,23 @@ def get_available_online_models() -> list:
                 name = m["name"].replace("models/", "")
                 if "generateContent" in m.get("supportedGenerationMethods", []) and "tts" not in name:
                     valid_models.append(name)
-            valid_models.sort(key=lambda x: ("3.8" not in x, "lite" in x, "flash" not in x))
+            valid_models.sort(key=lambda x: ("flash" not in x, "pro" in x))
             return valid_models
     except Exception as e:
         print(f"[!] মডেল তালিকা এরর: {e}")
-    return ["gemini-3.8-flash", "gemini-flash-lite-latest"]
+    return ["gemini-2.5-flash", "gemini-1.5-flash"]
 
 
 def call_gemini_dynamic(prompt: str, active_models: list) -> str:
-    headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY.strip()}
+    headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.65}
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.7}
     }
     for model in active_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=45)
+            res = requests.post(url, headers=headers, json=payload, timeout=50)
             if res.status_code == 200:
                 return res.json()["candidates"][0]["content"]["parts"][0]["text"]
             elif res.status_code in (429, 503):
@@ -296,7 +313,7 @@ def call_gemini_dynamic(prompt: str, active_models: list) -> str:
 def download_ai_image_with_retry(prompt: str, filename: str, max_retries: int = 3) -> str:
     os.makedirs(IMAGE_DIR, exist_ok=True)
     clean_prompt = prompt.replace("\n", " ").strip()
-    enhanced_prompt = f"{clean_prompt}, authentic editorial press photo, photojournalism style, 8k resolution, cinematic lighting, sharp details"
+    enhanced_prompt = f"{clean_prompt}, authentic editorial photojournalism, realistic lighting, sharp focus, 8k resolution, unedited news press photo style"
     encoded_prompt = urllib.parse.quote(enhanced_prompt)
     
     image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=675&nologo=true"
@@ -336,7 +353,7 @@ def fetch_news_for_category(category_name: str):
     feed_url = CATEGORY_FEEDS.get(category_name)
     processed = load_processed_history()
 
-    print(f"[*] [{category_name}] ক্যাটাগরির জন্য ট্রেন্ড স্ক্যান করা হচ্ছে...")
+    print(f"[*] [{category_name}] ক্যাটাগরির লাইভ ফিড স্ক্যান করা হচ্ছে...")
     try:
         feed = feedparser.parse(feed_url)
         for entry in feed.entries:
@@ -352,37 +369,38 @@ def fetch_news_for_category(category_name: str):
                     "summary": summary
                 }
     except Exception as e:
-        print(f"[!] ফিড এরর: {e}")
+        print(f"[!] ফিড রিডিং এরর: {e}")
     return None
 
 
 def generate_humanized_news(raw_news: dict, active_models: list) -> dict:
     prompt = f"""
-    You are a premier US news journalist writing exclusively for the category: {raw_news['category']}.
-    This story is currently trending in the United States. Rewrite it into a completely humanized, engaging, non-AI-sounding news article.
+    You are an award-winning investigative American journalist writing exclusively for the category: '{raw_news['category']}'.
+    Transform this developing US story into a comprehensive, deeply engaging, and authentic news report.
 
-    Source Context: {raw_news['title']}
-    Details: {raw_news['summary']}
+    Source Headline: {raw_news['title']}
+    Source Context: {raw_news['summary']}
 
-    EDITORIAL RULES:
-    1. Tone: Fast-paced, authentic, journalistic, and natural to US readers.
-    2. FORBIDDEN WORDS: Strictly never use 'delve', 'tapestry', 'testament', 'beacon', 'furthermore', 'moreover', 'in conclusion', 'vibrant', 'plethora'.
-    3. Headings: Use only ## for subheadings. The SEO headline will be the single H1.
-    4. Image Prompts: Generate 3 realistic editorial photojournalistic image prompts matching the story.
-    5. Tags: Provide 5 to 7 specific, highly relevant topical tags (celebrity names, events, organizations, keywords).
+    EDITORIAL & QUALITY GUIDELINES:
+    1. Humanized Voice: Write with natural cadence, nuance, and genuine journalistic flair. Avoid robotic summaries. Start directly with an arresting lede (hook) that places the reader right in the action.
+    2. Absolute Forbidden AI Clichés: NEVER use phrases like 'delve into', 'testament to', 'tapestry', 'beacon', 'furthermore', 'moreover', 'in conclusion', 'in summary', 'vibrant', 'plethora', 'bustling', 'it is important to note', 'serves as a reminder'.
+    3. Structural Depth: Provide comprehensive context, background details, public reactions, and future outlook. Use only ## for descriptive subheadings.
+    4. Word Count: 550 to 750 words of rich, original reporting.
+    5. Visual Direction: Create 3 realistic, press-wire editorial photojournalism descriptions (no CGI, no sci-fi surrealism).
+    6. Tags: 5 to 7 highly targeted tags including real person names, organizations, places, and core themes.
 
     Return ONLY a valid JSON object matching this schema:
     {{
-        "seo_headline": "Punchy click-worthy headline under 65 chars",
-        "slug": "clean-slug",
-        "meta_description": "Catchy 150-char meta description with a hook",
+        "seo_headline": "Compelling, journalistic headline under 65 chars",
+        "slug": "clean-url-slug",
+        "meta_description": "Sharp 150-char meta summary ending with high reader intrigue",
         "focus_keywords": ["keyword1", "keyword2", "keyword3"],
         "tags": ["Tag 1", "Tag 2", "Tag 3", "Tag 4", "Tag 5", "Tag 6"],
-        "summary_bullets": ["Key highlight 1", "Key highlight 2"],
-        "article_body_markdown": "Full breaking story with ## subheadings (350-450 words).",
-        "featured_image_prompt": "Editorial press photo wide shot",
-        "body_image_1_prompt": "Close-up action or key subject moment",
-        "body_image_2_prompt": "Atmospheric background or supporting detail"
+        "summary_bullets": ["Key critical development 1", "Key critical development 2"],
+        "article_body_markdown": "Full breaking story with ## subheadings formatted in clear paragraphs (550-750 words).",
+        "featured_image_prompt": "Editorial press photo establishing wide shot",
+        "body_image_1_prompt": "Editorial news photo candid action moment",
+        "body_image_2_prompt": "Editorial news photo detailed situational context"
     }}
     """
     response_text = call_gemini_dynamic(prompt, active_models)
@@ -392,15 +410,33 @@ def generate_humanized_news(raw_news: dict, active_models: list) -> dict:
 def run_automation():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(IMAGE_DIR, exist_ok=True)
-    processed = load_processed_history()
-
-    target_category = select_next_category()
-    if not target_category:
-        print("[★] আজকের জন্য সবকটি ক্যাটাগরির কোটা (প্রতিটিতে ২টি করে মোট ৮টি পোস্ট) ইতিমধ্যে পূর্ণ হয়েছে!")
-        return
 
     tracker = get_daily_quota_tracker()
-    print(f"\n[+] আজকের নির্বাচিত ক্যাটাগরি: {target_category} (আজ হয়েছে: {tracker['counts'][target_category]}/{DAILY_POSTS_PER_CATEGORY})")
+    total_posted = sum(tracker["counts"].values())
+    target_today = tracker.get("daily_target", 4)
+
+    print(f"==================================================")
+    print(f"[*] আজকের তারিখ: {tracker['date']}")
+    print(f"[*] আজকের মোট টার্গেট: {target_today} টি পোস্ট (ইতোমধ্যে সম্পন্ন: {total_posted} টি)")
+    print(f"[*] ক্যাটাগরি স্ট্যাটাস: {tracker['counts']}")
+    print(f"==================================================")
+
+    if total_posted >= target_today:
+        print("[★] আজকের জন্য নির্ধারিত দৈনিক টার্গেট ইতিমধ্যে পূর্ণ হয়েছে! পরবর্তী রানের অপেক্ষা করা হচ্ছে।")
+        return
+
+    target_category = select_balanced_category()
+    if not target_category:
+        print("[!] কোনো উপযুক্ত ক্যাটাগরি পাওয়া যায়নি বা কোটা সাময়িকভাবে ব্যালেন্সড রয়েছে।")
+        return
+
+    # হিউম্যান-লাইক রেন্ডম স্লিপ (১০ থেকে ৪০ মিনিট অনিয়মিত বিরতি)
+    delay_seconds = random.randint(600, 2400)
+    delay_minutes = round(delay_seconds / 60, 1)
+    print(f"[~] হিউম্যানাইজিং রেন্ডম ডিলে: বট {delay_minutes} মিনিট অপেক্ষা করছে...")
+    time.sleep(delay_seconds)
+
+    print(f"\n[+] নির্বাচিত ক্যাটাগরি: {target_category} (আজ পাবলিশ হয়েছে: {tracker['counts'][target_category]} টি)")
 
     active_models = get_available_online_models()
     news_item = fetch_news_for_category(target_category)
@@ -409,7 +445,7 @@ def run_automation():
         print(f"[!] {target_category}-এর জন্য কোনো ফ্রেশ সংবাদ পাওয়া যায়নি।")
         return
 
-    print(f"[*] নিউজ প্রসেসিং শুরু: {news_item['title'][:65]}...")
+    print(f"[*] সংবাদ প্রক্রিয়াকরণ শুরু: {news_item['title'][:65]}...")
 
     try:
         result = generate_humanized_news(news_item, active_models)
@@ -420,7 +456,7 @@ def run_automation():
         p_body1 = result.get("body_image_1_prompt") or f"{news_item['title']} highlight"
         p_body2 = result.get("body_image_2_prompt") or f"{news_item['title']} atmosphere"
 
-        print("  [*] ৩টি এআই ছবি তৈরি ও ডাউনলোড হচ্ছে...")
+        print("  [*] ৩টি এআই প্রেস ছবি তৈরি ও ডাউনলোড হচ্ছে...")
         img_feat = download_ai_image_with_retry(p_feat, f"{timestamp}_{slug[:25]}_featured.jpg")
         img_body1 = download_ai_image_with_retry(p_body1, f"{timestamp}_{slug[:25]}_body1.jpg")
         img_body2 = download_ai_image_with_retry(p_body2, f"{timestamp}_{slug[:25]}_body2.jpg")
@@ -431,7 +467,7 @@ def run_automation():
             "body_image_2": img_body2
         }
 
-        # লোকাল ব্যাকআপ সেভ
+        # ব্যাকআপ সেভ
         filename = f"{timestamp}_{slug[:35]}.json"
         with open(os.path.join(OUTPUT_DIR, filename), "w", encoding="utf-8") as f:
             json.dump({
@@ -441,21 +477,22 @@ def run_automation():
                 "saved_images": saved_images
             }, f, ensure_ascii=False, indent=2)
 
-        # ওয়ার্ডপ্রেসে নির্ধারিত ক্যাটাগরি ও ৫-৭টি ট্যাগসহ পোস্ট
+        # ওয়ার্ডপ্রেসে পাবলিশ
         is_published = post_to_wordpress(result, saved_images, target_category)
 
         if is_published:
+            processed = load_processed_history()
             processed.add(news_item["link"])
             processed.add(news_item["title"])
             save_processed_history(processed)
 
-            # ক্যাটাগরি কোটা আপডেট
+            # কোটা বৃদ্ধি ও সংরক্ষণ
             tracker["counts"][target_category] += 1
             save_daily_quota_tracker(tracker)
-            print(f"\n[★] আপডেট: {target_category}-এ আজকের মোট পোস্ট সংখ্যা: {tracker['counts'][target_category]}/{DAILY_POSTS_PER_CATEGORY}")
+            print(f"\n[★] সফল! {target_category}-এ আজকের পোস্ট সংখ্যা: {tracker['counts'][target_category]}")
 
     except Exception as e:
-        print(f"[!] প্রসেসিংয়ে সমস্যা: {e}")
+        print(f"[!] প্রক্রিয়াকরণে এরর: {e}")
 
 
 if __name__ == "__main__":
