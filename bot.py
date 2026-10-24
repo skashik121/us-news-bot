@@ -26,13 +26,14 @@ IMAGE_DIR = os.path.join(OUTPUT_DIR, "images")
 PROCESSED_LOG_FILE = "processed_articles.json"
 DAILY_QUOTA_FILE = "daily_category_quota.json"
 
-# ৪টি নির্ধারিত ক্যাটাগরি ও তাদের ডেডিকেটেড গুগল লাইভ ফিড (টেক ও ট্রেন্ডস সহ)
+# ৪টি নির্ধারিত ক্যাটাগরি ও তাদের আরও উন্নত ও নিখুঁত গুগল লাইভ ফিড
 CATEGORY_FEEDS = {
     "Pop Culture": "https://news.google.com/rss/search?q=pop+culture+celebrity+when:1d&hl=en-US&gl=US&ceid=US:en",
     "Entertainment": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
     "Sports": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp1ZEdvU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
-    "Tech & Trends": "https://news.google.com/rss/search?q=technology+trends+ai+gadgets+when:1d&hl=en-US&gl=US&ceid=US:en"
+    "Tech & Trends": "https://news.google.com/rss/search?q=technology+artificial+intelligence+gadgets+innovations+software+when:1d&hl=en-US&gl=US&ceid=US:en"
 }
+
 # ===================================================
 
 def get_wp_auth_header() -> dict:
