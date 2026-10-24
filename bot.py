@@ -36,22 +36,19 @@ CATEGORY_FEEDS = {
 
 # ===================================================
 
-def get_wp_auth_header() -> dict:
-    credentials = f"{WP_USERNAME}:{WP_APP_PASSWORD}"
-    token = base64.b64encode(credentials.encode()).decode("utf-8")
-    return {"Authorization": f"Basic {token}"}
-
 def get_or_create_wp_category(category_name: str) -> int:
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/categories"
     headers = get_wp_auth_header()
     
     try:
-        res = requests.get(f"{url}?search={urllib.parse.quote(category_name)}", headers=headers, timeout=20)
+        # সার্চ না করে একসাথে সব ক্যাটাগরি এনে মিলিয়ে দেখা (যাতে & বা বিশেষ চিহ্নের সমস্যা না হয়)
+        res = requests.get(f"{url}?per_page=100", headers=headers, timeout=20)
         if res.status_code == 200:
             for cat in res.json():
-                if cat.get("name", "").lower() == category_name.lower():
+                if cat.get("name", "").strip().lower() == category_name.strip().lower():
                     return cat.get("id")
         
+        # ক্যাটাগরি না পাওয়া গেলে নতুন তৈরি করা
         headers["Content-Type"] = "application/json"
         create_res = requests.post(url, headers=headers, json={"name": category_name}, timeout=20)
         if create_res.status_code in (200, 201):
@@ -60,6 +57,7 @@ def get_or_create_wp_category(category_name: str) -> int:
         print(f"    [!] ক্যাটাগরি হ্যান্ডলিং এরর: {e}")
         
     return 1
+
 
 def get_or_create_wp_tags(tag_names: list) -> list:
     tag_ids = []
