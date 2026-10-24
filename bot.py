@@ -15,7 +15,6 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ==================== কনফিগারেশন ====================
-# গিটহাব সিক্রেটস সাপোর্ট (যদি এনভায়রনমেন্টে থাকে তবে সেখান থেকে নেবে, অন্যথায় ডিফল্ট মান ব্যবহার করবে)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6JSh7vpD-lNikbDO_f3XElrRlxt0hzgzPwTMQI-bK_gRQ").strip()
 WP_SITE_URL = os.getenv("WP_SITE_URL", "https://buzz.mamahmud.top").strip()
 WP_USERNAME = os.getenv("WP_USERNAME", "mamahmud").strip()
@@ -27,21 +26,19 @@ IMAGE_DIR = os.path.join(OUTPUT_DIR, "images")
 PROCESSED_LOG_FILE = "processed_articles.json"
 DAILY_QUOTA_FILE = "daily_category_quota.json"
 
-# ৪টি নির্ধারিত ক্যাটাগরি ও তাদের ডেডিকেটেড গুগল লাইভ ফিড
+# ৪টি নির্ধারিত ক্যাটাগরি ও তাদের ডেডিকেটেড গুগল লাইভ ফিড (টেক ও ট্রেন্ডস সহ)
 CATEGORY_FEEDS = {
     "Pop Culture": "https://news.google.com/rss/search?q=pop+culture+celebrity+when:1d&hl=en-US&gl=US&ceid=US:en",
     "Entertainment": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
     "Sports": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp1ZEdvU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
-    "Tech & Trends": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen"
+    "Tech & Trends": "https://news.google.com/rss/search?q=technology+trends+ai+gadgets+when:1d&hl=en-US&gl=US&ceid=US:en"
 }
 # ===================================================
-
 
 def get_wp_auth_header() -> dict:
     credentials = f"{WP_USERNAME}:{WP_APP_PASSWORD}"
     token = base64.b64encode(credentials.encode()).decode("utf-8")
     return {"Authorization": f"Basic {token}"}
-
 
 def get_or_create_wp_category(category_name: str) -> int:
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/categories"
@@ -62,7 +59,6 @@ def get_or_create_wp_category(category_name: str) -> int:
         print(f"    [!] ক্যাটাগরি হ্যান্ডলিং এরর: {e}")
         
     return 1
-
 
 def get_or_create_wp_tags(tag_names: list) -> list:
     tag_ids = []
@@ -95,7 +91,6 @@ def get_or_create_wp_tags(tag_names: list) -> list:
             continue
 
     return tag_ids
-
 
 def upload_image_to_wordpress(image_path: str, alt_text: str = "") -> dict:
     if not image_path or not os.path.exists(image_path):
@@ -132,7 +127,6 @@ def upload_image_to_wordpress(image_path: str, alt_text: str = "") -> dict:
 
     return {}
 
-
 def format_article_body_with_images(markdown_text: str, body_images: list, title: str) -> str:
     html_lines = []
     lines = markdown_text.split("\n")
@@ -158,19 +152,16 @@ def format_article_body_with_images(markdown_text: str, body_images: list, title
 
     return "\n".join(html_lines)
 
-
 def post_to_wordpress(article_data: dict, saved_images: dict, target_category: str) -> bool:
     print(f"\n[*] [{target_category}] ক্যাটাগরিতে পোস্ট ও ছবি আপলোড শুরু হচ্ছে...")
     headline = article_data.get("seo_headline", "")
     slug = article_data.get("slug", "")
 
-    # ১. ফিচার্ড ইমেজ
     feat_img_info = {}
     if saved_images.get("featured"):
         print("  [*] ফিচার্ড ইমেজ আপলোড হচ্ছে...")
         feat_img_info = upload_image_to_wordpress(saved_images["featured"], alt_text=headline)
 
-    # ২. বডি ইমেজ
     body_imgs_info = []
     if saved_images.get("body_image_1"):
         info1 = upload_image_to_wordpress(saved_images["body_image_1"], alt_text=f"{headline} detail")
@@ -180,17 +171,14 @@ def post_to_wordpress(article_data: dict, saved_images: dict, target_category: s
         info2 = upload_image_to_wordpress(saved_images["body_image_2"], alt_text=f"{headline} scene")
         if info2: body_imgs_info.append(info2)
 
-    # ৩. আর্টিকেল ফরম্যাটিং
     raw_body = article_data.get("article_body_markdown", "")
     final_content_html = format_article_body_with_images(raw_body, body_imgs_info, headline)
 
-    # ৪. ক্যাটাগরি ও ট্যাগ
     cat_id = get_or_create_wp_category(target_category)
     raw_tags = article_data.get("tags") or article_data.get("focus_keywords", [])
     print(f"  [*] ট্যাগ প্রসেস হচ্ছে ({len(raw_tags[:7])} টি ট্যাগ)...")
     tag_ids = get_or_create_wp_tags(raw_tags[:7])
 
-    # ৫. পোস্ট পেলোড
     url = f"{WP_SITE_URL.rstrip('/')}/wp-json/wp/v2/posts"
     headers = get_wp_auth_header()
     headers["Content-Type"] = "application/json"
@@ -222,10 +210,8 @@ def post_to_wordpress(article_data: dict, saved_images: dict, target_category: s
 
     return False
 
-
 def get_daily_quota_tracker() -> dict:
     today_str = datetime.now().strftime("%Y-%m-%d")
-    # দৈনিক টার্গেট ৩ থেকে ৫ এর মধ্যে রেন্ডমভাবে নির্ধারিত হবে
     random_target = random.randint(3, 5)
     default_tracker = {
         "date": today_str,
@@ -245,33 +231,9 @@ def get_daily_quota_tracker() -> dict:
             pass
     return default_tracker
 
-
 def save_daily_quota_tracker(tracker: dict):
     with open(DAILY_QUOTA_FILE, "w", encoding="utf-8") as f:
         json.dump(tracker, f, indent=2)
-
-
-def select_balanced_category() -> str:
-    """ক্যাটাগরি ভারসাম্য বজায় রেখে পরবর্তী উপযুক্ত ক্যাটাগরি নির্বাচন করা"""
-    tracker = get_daily_quota_tracker()
-    total_posted_today = sum(tracker["counts"].values())
-    target_today = tracker.get("daily_target", 4)
-
-    # দিনের মোট টার্গেট পূর্ণ হলে আর পোস্ট হবে না
-    if total_posted_today >= target_today:
-        return ""
-
-    # যে ক্যাটাগরিগুলোতে এখনো ২টির বেশি পোস্ট হয়নি তাদের মধ্যে সবচেয়ে কম পোস্ট হওয়া ক্যাটাগরি নির্বাচন
-    available_cats = [cat for cat in CATEGORY_FEEDS if tracker["counts"].get(cat, 0) < 2]
-    if not available_cats:
-        return ""
-
-    # সবচেয়ে কম কাউন্ট থাকা ক্যাটাগরিগুলোকে আগে প্রাধান্য দেওয়া
-    min_count = min(tracker["counts"].get(cat, 0) for cat in available_cats)
-    least_posted_cats = [cat for cat in available_cats if tracker["counts"].get(cat, 0) == min_count]
-    
-    return random.choice(least_posted_cats)
-
 
 def get_available_online_models() -> list:
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
@@ -290,7 +252,6 @@ def get_available_online_models() -> list:
         print(f"[!] মডেল তালিকা এরর: {e}")
     return ["gemini-2.5-flash", "gemini-1.5-flash"]
 
-
 def call_gemini_dynamic(prompt: str, active_models: list) -> str:
     headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
     payload = {
@@ -307,8 +268,7 @@ def call_gemini_dynamic(prompt: str, active_models: list) -> str:
                 continue
         except Exception:
             continue
-    raise Exception("কোনো সক্রিয় এআই মডেল রেসপন্স করেনি।")
-
+    raise Exception("কোনো সক্রিয় এআই মডেল রেসপন্স করেনি।")
 
 def download_ai_image_with_retry(prompt: str, filename: str, max_retries: int = 3) -> str:
     os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -333,7 +293,6 @@ def download_ai_image_with_retry(prompt: str, filename: str, max_retries: int = 
             time.sleep(2)
     return ""
 
-
 def load_processed_history() -> set:
     if os.path.exists(PROCESSED_LOG_FILE):
         try:
@@ -343,11 +302,9 @@ def load_processed_history() -> set:
             return set()
     return set()
 
-
 def save_processed_history(history: set):
     with open(PROCESSED_LOG_FILE, "w", encoding="utf-8") as f:
         json.dump(list(history), f, indent=2)
-
 
 def fetch_news_for_category(category_name: str):
     feed_url = CATEGORY_FEEDS.get(category_name)
@@ -371,7 +328,6 @@ def fetch_news_for_category(category_name: str):
     except Exception as e:
         print(f"[!] ফিড রিডিং এরর: {e}")
     return None
-
 
 def generate_humanized_news(raw_news: dict, active_models: list) -> dict:
     prompt = f"""
@@ -406,7 +362,6 @@ def generate_humanized_news(raw_news: dict, active_models: list) -> dict:
     response_text = call_gemini_dynamic(prompt, active_models)
     return json.loads(response_text)
 
-
 def run_automation():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -422,30 +377,46 @@ def run_automation():
     print(f"==================================================")
 
     if total_posted >= target_today:
-        print("[★] আজকের জন্য নির্ধারিত দৈনিক টার্গেট ইতিমধ্যে পূর্ণ হয়েছে! পরবর্তী রানের অপেক্ষা করা হচ্ছে।")
+        print("[★] আজকের জন্য নির্ধারিত দৈনিক টার্গেট ইতিমধ্যে পূর্ণ হয়েছে! পরবর্তী রানের অপেক্ষা করা হচ্ছে।")
         return
 
-    target_category = select_balanced_category()
-    if not target_category:
-        print("[!] কোনো উপযুক্ত ক্যাটাগরি পাওয়া যায়নি বা কোটা সাময়িকভাবে ব্যালেন্সড রয়েছে।")
+    # যে ক্যাটাগরিগুলোতে এখনো ২টির কম পোস্ট হয়েছে, সেগুলোকে কম পোস্ট হওয়া ক্রমানুসারে সাজানো
+    available_cats = [cat for cat in CATEGORY_FEEDS if tracker["counts"].get(cat, 0) < 2]
+    if not available_cats:
+        print("[!] সব ক্যাটাগরিতে আজকের কোটা পূর্ণ!")
+        return
+
+    # কম পোস্ট হওয়া ক্যাটাগরিগুলোকে প্রথমে প্রাধান্য দেওয়ার জন্য সর্ট করা
+    available_cats.sort(key=lambda cat: tracker["counts"].get(cat, 0))
+
+    news_item = None
+    target_category = None
+
+    # ফলব্যাক লুপ: একটি ক্যাটাগরি থেকে নিউজ না পেলে স্বয়ংক্রিয়ভাবে পরের ক্যাটাগরিতে চেক করবে
+    for cat in available_cats:
+        print(f"[*] চেক করা হচ্ছে ক্যাটাগরি: {cat} (বর্তমান পোস্ট: {tracker['counts'].get(cat, 0)})")
+        item = fetch_news_for_category(cat)
+        if item:
+            news_item = item
+            target_category = cat
+            break
+        else:
+            print(f"    [!] {cat} ক্যাটাগরিতে কোনো নতুন ফ্রেশ নিউজ পাওয়া যায়নি, পরবর্তী ক্যাটাগরি ট্রাই করা হচ্ছে...")
+
+    if not news_item or not target_category:
+        print("[!] দুঃখিত, বর্তমানে কোনো ক্যাটাগরি থেকেই ফ্রেশ সংবাদ পাওয়া যায়নি।")
         return
 
     # হিউম্যান-লাইক রেন্ডম স্লিপ (১০ থেকে ৪০ মিনিট অনিয়মিত বিরতি)
     delay_seconds = random.randint(600, 2400)
     delay_minutes = round(delay_seconds / 60, 1)
-    print(f"[~] হিউম্যানাইজিং রেন্ডম ডিলে: বট {delay_minutes} মিনিট অপেক্ষা করছে...")
+    print(f"\n[~] হিউম্যানাইজিং রেন্ডম ডিলে: বট {delay_minutes} মিনিট অপেক্ষা করছে...")
     time.sleep(delay_seconds)
 
-    print(f"\n[+] নির্বাচিত ক্যাটাগরি: {target_category} (আজ পাবলিশ হয়েছে: {tracker['counts'][target_category]} টি)")
+    print(f"\n[+] চূড়ান্ত নির্বাচিত ক্যাটাগরি: {target_category} (আজ পাবলিশ হয়েছে: {tracker['counts'][target_category]} টি)")
 
     active_models = get_available_online_models()
-    news_item = fetch_news_for_category(target_category)
-
-    if not news_item:
-        print(f"[!] {target_category}-এর জন্য কোনো ফ্রেশ সংবাদ পাওয়া যায়নি।")
-        return
-
-    print(f"[*] সংবাদ প্রক্রিয়াকরণ শুরু: {news_item['title'][:65]}...")
+    print(f"[*] সংবাদ প্রক্রিয়াকরণ শুরু: {news_item['title'][:65]}...")
 
     try:
         result = generate_humanized_news(news_item, active_models)
@@ -477,7 +448,7 @@ def run_automation():
                 "saved_images": saved_images
             }, f, ensure_ascii=False, indent=2)
 
-        # ওয়ার্ডপ্রেসে পাবলিশ
+        # ওয়ার্ডপ্রেসে পাবলিশ
         is_published = post_to_wordpress(result, saved_images, target_category)
 
         if is_published:
@@ -492,8 +463,7 @@ def run_automation():
             print(f"\n[★] সফল! {target_category}-এ আজকের পোস্ট সংখ্যা: {tracker['counts'][target_category]}")
 
     except Exception as e:
-        print(f"[!] প্রক্রিয়াকরণে এরর: {e}")
-
+        print(f"[!] প্রক্রিয়াকরণে এরর: {e}")
 
 if __name__ == "__main__":
     run_automation()
